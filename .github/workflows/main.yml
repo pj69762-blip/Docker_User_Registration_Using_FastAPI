@@ -64,6 +64,34 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+              - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Validate Docker credentials format
+        env:
+          DH_USER: ${{ secrets.DOCKER_USERNAME }}
+          DH_TOKEN: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          if [ -z "$DH_USER" ] || [ -z "$DH_TOKEN" ]; then
+            echo "Docker credentials are missing"
+            exit 1
+          fi
+          if [[ "$DH_TOKEN" != dckr_pat_* ]]; then
+            echo "Token does not appear to have the expected Docker Hub PAT prefix"
+            exit 1
+          fi
+          if [[ "$DH_TOKEN" =~ [[:space:]] ]]; then
+            echo "Token contains whitespace"
+            exit 1
+          fi
+          echo "Docker credential format checks passed"
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
       - name: Build Docker Image
         uses: docker/build-push-action@v6
         with:
