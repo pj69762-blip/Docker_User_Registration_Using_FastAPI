@@ -71,28 +71,27 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+
       - name: Validate Docker Hub Credentials
         env:
           DH_USER: ${{ secrets.DOCKER_USERNAME }}
           DH_TOKEN: ${{ secrets.DOCKER_PASSWORD }}
         run: |
           if [ -z "$DH_USER" ]; then
-            echo "ERROR: DOCKER_USERNAME secret is missing"
+            echo "ERROR: DOCKER_USERNAME is missing"
             exit 1
           fi
 
           if [ -z "$DH_TOKEN" ]; then
-            echo "ERROR: DOCKER_PASSWORD secret is missing"
+            echo "ERROR: DOCKER_PASSWORD is missing"
             exit 1
           fi
+
+          DH_USER=$(printf '%s' "$DH_USER" | xargs)
+          DH_TOKEN=$(printf '%s' "$DH_TOKEN" | xargs)
 
           if [[ ! "$DH_TOKEN" =~ ^dckr_pat_ ]]; then
-            echo "ERROR: Docker Hub access token format is incorrect"
-            exit 1
-          fi
-
-          if [[ "$DH_USER" =~ [[:space:]] ]] || [[ "$DH_TOKEN" =~ [[:space:]] ]]; then
-            echo "ERROR: Credentials must not contain whitespace"
+            echo "ERROR: Invalid Docker Hub token format"
             exit 1
           fi
 
