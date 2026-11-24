@@ -1,4 +1,5 @@
-name: CI/CD for FastAPI Docker Application
+
+name: Docker User Registration FastAPI CI/CD
 
 on:
   push:
@@ -8,100 +9,54 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
+
+  # JOB 1: Run Python Tests
   build-and-test:
-    name: Build and Test FastAPI
+    name: Python Tests
     runs-on: ubuntu-latest
 
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_DB: test_db
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d test_db"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
-    env:
-      DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/test_db
-
     steps:
-      - name: Checkout code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
 
-      - name: Install dependencies
+      - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install pytest httpx
 
-      - name: Run Alembic Migrations
-        run: alembic upgrade head
+      - name: Run Tests
+        run: |
+          python -m pytest -v
 
-      - name: Run Pytest
-        run: pytest -v
 
+  # JOB 2: Build Docker Image
   dockerbuild:
-    name: Build FastAPI Docker Image
+    name: Docker Build
     runs-on: ubuntu-latest
     needs: build-and-test
 
     steps:
-      - name: Checkout code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-              - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Validate Docker credentials format
-        env:
-          DH_USER: ${{ secrets.DOCKER_USERNAME }}
-          DH_TOKEN: ${{ secrets.DOCKER_PASSWORD }}
-        run: |
-          if [ -z "$DH_USER" ] || [ -z "$DH_TOKEN" ]; then
-            echo "Docker credentials are missing"
-            exit 1
-          fi
-          if [[ "$DH_TOKEN" != dckr_pat_* ]]; then
-            echo "Token does not appear to have the expected Docker Hub PAT prefix"
-            exit 1
-          fi
-          if [[ "$DH_TOKEN" =~ [[:space:]] ]]; then
-            echo "Token contains whitespace"
-            exit 1
-          fi
-          echo "Docker credential format checks passed"
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
       - name: Build Docker Image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile
-          push: false
-          tags: fastapi-app:latest
+        run: |
+          docker build -t user-management-api:latest .
 
+
+  # JOB 3: Build and Publish to Docker Hub
   build-and-publish:
-    name: Publish FastAPI Image
+    name: Publish Docker Image
     runs-on: ubuntu-latest
     needs:
       - build-and-test
@@ -110,30 +65,38 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     steps:
-      - name: Checkout code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-              - name: Validate Docker credentials format
+      - name: Validate Docker Hub Credentials
         env:
           DH_USER: ${{ secrets.DOCKER_USERNAME }}
           DH_TOKEN: ${{ secrets.DOCKER_PASSWORD }}
         run: |
-          if [ -z "$DH_USER" ] || [ -z "$DH_TOKEN" ]; then
-            echo "Docker credentials are missing"
+          if [ -z "$DH_USER" ]; then
+            echo "ERROR: DOCKER_USERNAME secret is missing"
             exit 1
           fi
-          if [[ "$DH_TOKEN" != dckr_pat_* ]]; then
-            echo "Token does not appear to have the expected Docker Hub PAT prefix"
+
+          if [ -z "$DH_TOKEN" ]; then
+            echo "ERROR: DOCKER_PASSWORD secret is missing"
             exit 1
           fi
-          if [[ "$DH_TOKEN" =~ [[:space:]] ]]; then
-            echo "Token contains whitespace"
+
+          if [[ ! "$DH_TOKEN" =~ ^dckr_pat_ ]]; then
+            echo "ERROR: Docker Hub access token format is incorrect"
             exit 1
           fi
-          echo "Docker credential format checks passed"
+
+          if [[ "$DH_USER" =~ [[:space:]] ]] || [[ "$DH_TOKEN" =~ [[:space:]] ]]; then
+            echo "ERROR: Credentials must not contain whitespace"
+            exit 1
+          fi
+
+          echo "Docker Hub credentials validation successful"
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -142,7 +105,6 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Build and Push Docker Image
-        id: docker-build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -152,6 +114,8 @@ jobs:
             ${{ secrets.DOCKER_USERNAME }}/user-management-api:latest
             ${{ secrets.DOCKER_USERNAME }}/user-management-api:${{ github.sha }}
 
-      - name: Display Image Digest
+      - name: Image Digest
         run: |
-          echo "Image digest: ${{ steps.docker-build.outputs.digest }}"
+          echo "Docker image published successfully"
+          echo "Image: ${{ secrets.DOCKER_USERNAME }}/user-management-api:latest"
+          echo "Commit: ${{ github.sha }}"
