@@ -112,6 +112,7 @@ jobs:
             --password-stdin
 
           echo "Docker Hub login successful"
+
       - name: Build and Push Docker Image
         id: docker-build
         uses: docker/build-push-action@v6
@@ -120,8 +121,8 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: |
-            ${{ steps.docker-login.outputs.username }}/user-management-api:latest
-            ${{ steps.docker-login.outputs.username }}/user-management-api:${{ github.sha }}
+            priyalj22/user-management-api:latest
+            priyalj22/user-management-api:${{ github.sha }}
 
       - name: Image Digest
         run: |
